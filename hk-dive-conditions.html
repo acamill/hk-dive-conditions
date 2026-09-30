@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08131b">
+<title>HK Dive Conditions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #08131b;
+    --surface: #0f1f2a;
+    --surface-2: #152a38;
+    --line: #21394a;
+    --text: #dce8ef;
+    --muted: #86a0b0;
+    --accent: #6cc4c1;
+    --good: #3fcf8e;
+    --warn: #f2b84b;
+    --bad: #f0645f;
+    --unknown: #6d8494;
+    --banner-bg: #3a1d17;
+    --banner-line: #7a3528;
+    --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--ground);
+    color: var(--text);
+    font: 15px/1.5 var(--body);
+    padding: env(safe-area-inset-top, 0px) 16px calc(env(safe-area-inset-bottom, 0px) + 24px);
+  }
+  .wrap { max-width: 720px; margin: 0 auto; display: grid; gap: 16px; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* Header */
+  header {
+    position: sticky; top: 0; z-index: 1000;
+    background: var(--ground);
+    margin-inline: -16px; padding: 12px 16px 10px;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  h1 {
+    font: 700 26px/1 var(--display); letter-spacing: .02em; margin: 0;
+    text-transform: uppercase;
+  }
+  h1 span { color: var(--accent); }
+  .updated { font: 13px var(--mono); color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+    padding: 3px 9px; cursor: pointer; font-size: 12px;
+  }
+  .icon-btn:hover { border-color: var(--accent); }
+
+  /* Warning banner */
+  .banner {
+    background: var(--banner-bg); border: 1px solid var(--banner-line); border-radius: 8px;
+    padding: 10px 12px; display: grid; gap: 6px;
+  }
+  .banner h2 { margin: 0; font: 600 13px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--warn); }
+  .banner ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+  .banner li { background: rgba(0,0,0,.25); border-radius: 4px; padding: 2px 8px; font-size: 14px; }
+  .banner li b { font: 500 12px var(--mono); color: var(--warn); margin-right: 6px; }
+  .banner.clear { background: var(--surface); border-color: var(--line); }
+  .banner.clear h2 { color: var(--muted); }
+
+  /* Map */
+  #map {
+    height: 260px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .leaflet-container { font-family: var(--body); }
+  .leaflet-tooltip {
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+    font: 500 12px var(--body); box-shadow: none;
+  }
+  .leaflet-tooltip-top:before { border-top-color: var(--line); }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+
+  /* Cards */
+  .cards { display: grid; gap: 10px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    border-left: 4px solid var(--c, var(--unknown));
+    scroll-margin-top: 70px;
+    transition: border-color .3s, box-shadow .3s;
+  }
+  .card.flash { box-shadow: 0 0 0 2px var(--accent); }
+  .card-head {
+    width: 100%; background: none; border: 0; text-align: left; cursor: pointer;
+    padding: 12px 14px 10px; display: grid; gap: 10px;
+  }
+  .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .site-name { font: 600 22px/1.05 var(--display); letter-spacing: .01em; margin: 0; }
+  .site-note { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .badge {
+    flex: none; font: 700 13px var(--display); letter-spacing: .1em; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 999px; color: #06121a; background: var(--c, var(--unknown));
+  }
+  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .metric { display: grid; gap: 1px; min-width: 0; }
+  .metric dt { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .metric dd { margin: 0; font: 500 17px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .metric dd small { font-size: 11px; color: var(--muted); margin-left: 1px; }
+  .metric dd.over { color: var(--c-metric); }
+  .expand-hint { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+  .card-body { padding: 0 14px 14px; display: grid; gap: 12px; }
+  .strip-wrap { overflow-x: auto; margin-inline: -14px; padding-inline: 14px; }
+  .strip { display: grid; grid-auto-flow: column; grid-auto-columns: 62px; gap: 4px; padding-bottom: 4px; }
+  .hour {
+    background: var(--surface-2); border-radius: 6px; padding: 6px 4px; text-align: center;
+    font: 12px/1.35 var(--mono); font-variant-numeric: tabular-nums; border-top: 3px solid var(--c, var(--unknown));
+  }
+  .hour .t { color: var(--muted); }
+  .hour .w { font-size: 13px; color: var(--text); }
+  .strip-legend { font-size: 11px; color: var(--muted); }
+  .notify { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
+  .switch { position: relative; width: 42px; height: 24px; flex: none; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .switch span {
+    position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: background .2s; pointer-events: none;
+  }
+  .switch span::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--text); transition: transform .2s;
+  }
+  .switch input:checked + span { background: var(--good); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .notify-msg { font-size: 12px; color: var(--warn); }
+  .error { color: var(--bad); font-size: 13px; }
+
+  /* Sections */
+  section h2 {
+    font: 600 20px var(--display); letter-spacing: .04em; text-transform: uppercase; margin: 8px 0 8px;
+  }
+  .rules { font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+  .rules b { font-weight: 600; }
+
+  /* Feedback */
+  form { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 12px; }
+  label, legend { font-size: 13px; color: var(--muted); }
+  .field { display: grid; gap: 4px; }
+  input[type=text], select, textarea {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; width: 100%;
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; }
+  .outcomes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .outcomes label {
+    position: relative; text-align: center; padding: 9px 4px; border-radius: 6px; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--text); font-size: 14px;
+  }
+  .outcomes input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .outcomes label:has(input:checked) { border-color: var(--oc); color: var(--oc); font-weight: 600; }
+  .outcomes label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .submit-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .primary {
+    background: var(--accent); color: #06121a; border: 0; border-radius: 6px; padding: 10px 18px;
+    font-weight: 600; cursor: pointer;
+  }
+  .primary:disabled { opacity: .5; cursor: default; }
+  .form-status { font-size: 13px; color: var(--muted); }
+  .recent { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+  .recent li { border-left: 3px solid var(--oc, var(--line)); padding: 4px 0 4px 10px; display: grid; gap: 2px; }
+  .recent .meta { font-size: 12px; color: var(--muted); }
+  .recent .meta b { color: var(--oc); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .recent .note { font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .empty { color: var(--muted); font-size: 14px; }
+
+  footer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; line-height: 1.6; }
+  footer a { color: var(--accent); }
+
+  @media (max-width: 460px) {
+    .metrics { grid-template-columns: repeat(3, 1fr); row-gap: 8px; }
+    #map { height: 220px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>HK <span>Dive</span> Conditions</h1>
+    <div class="updated">
+      <span id="updated">Loading…</span>
+      <button class="icon-btn" id="refresh" type="button" aria-label="Refresh now">Refresh</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner clear" aria-live="polite">
+    <h2>HKO warnings</h2>
+    <div class="empty">Checking…</div>
+  </div>
+
+  <div id="map" role="region" aria-label="Map of dive sites"></div>
+  <div class="legend">
+    <span><i style="background:var(--good)"></i>Diveable</span>
+    <span><i style="background:var(--warn)"></i>Marginal</span>
+    <span><i style="background:var(--bad)"></i>Rough</span>
+    <span><i style="background:var(--unknown)"></i>No data</span>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2>How the score works</h2>
+    <div class="rules" id="rules"></div>
+  </section>
+
+  <section>
+    <h2>How was the water?</h2>
+    <form id="feedback" novalidate>
+      <div class="field">
+        <label for="fb-name">Name (optional)</label>
+        <input type="text" id="fb-name" maxlength="60" autocomplete="nickname">
+      </div>
+      <div class="field">
+        <label for="fb-site">Site</label>
+        <select id="fb-site" required></select>
+      </div>
+      <fieldset>
+        <legend>Actual conditions</legend>
+        <div class="outcomes">
+          <label style="--oc:var(--good)"><input type="radio" name="outcome" id="fb-good" value="good">Good</label>
+          <label style="--oc:var(--warn)"><input type="radio" name="outcome" id="fb-soso" value="so-so">So-so</label>
+          <label style="--oc:var(--bad)"><input type="radio" name="outcome" id="fb-bad" value="bad">Bad</label>
+        </div>
+      </fieldset>
+      <div class="field">
+        <label for="fb-notes">Notes (visibility, current, surge, jellyfish…)</label>
+        <textarea id="fb-notes" maxlength="1000"></textarea>
+      </div>
+      <div class="submit-row">
+        <button class="primary" type="submit" id="fb-submit">Send report</button>
+        <span class="form-status" id="fb-status" role="status"></span>
+      </div>
+    </form>
+    <h2 style="margin-top:18px">Latest reports</h2>
+    <ul class="recent" id="recent"><li class="empty">Loading…</li></ul>
+  </section>
+
+  <footer>
+    <strong>Not a safety tool.</strong> Scores come from model forecasts on a coarse grid and can miss local swell,
+    currents, surge and visibility. Always check the
+    <a href="https://www.hko.gov.hk/en/wxinfo/currwx/current.htm" target="_blank" rel="noopener">Hong Kong Observatory</a>
+    directly before you get in the water, and dive within your training.
+    Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (marine and forecast) and HKO Open Data.
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* ==========================================================================
+   CONFIG: every tunable value lives here. Adjust thresholds as feedback data
+   comes in. A site is scored by the first level whose limits it is under.
+   ========================================================================== */
+const CONFIG = {
+  score: {
+    diveable: { windKmh: 22, gustKmh: 40, waveM: 0.5 },   // all strictly below → green
+    marginal: { windKmh: 32, gustKmh: 55, waveM: 1.0 },   // all strictly below → amber
+    // anything else → rough (red); missing wind or wave → no data (grey)
+  },
+  sites: [
+    { id: 'shek-o',  name: 'Shek O',                       lat: 22.2293, lon: 114.2500, note: 'Rocky entries, exposed to E–SE swell' },
+    { id: 'stanley', name: 'Stanley',                      lat: 22.2190, lon: 114.2100, note: 'Semi-sheltered, boat traffic' },
+    { id: 'cwb',     name: 'Clear Water Bay (Tai Au Mun)', lat: 22.2836, lon: 114.2936, note: 'Strong currents possible' },
+    { id: 'sai-kung',name: 'Sai Kung',                     lat: 22.3814, lon: 114.2708, note: 'Inner port, gateway to many sites' },
+  ],
+  forecastHours: 12,
+  refreshMinutes: 30,
+  notifyCheckMinutes: 15,
+  recentFeedbackCount: 5,
+  map: { center: [22.30, 114.25], zoom: 11 },
+  tz: 'Asia/Hong_Kong',
+};
+
+const LEVELS = {
+  diveable: { label: 'Diveable', color: 'var(--good)' },
+  marginal: { label: 'Marginal', color: 'var(--warn)' },
+  rough:    { label: 'Rough',    color: 'var(--bad)' },
+  unknown:  { label: 'No data',  color: 'var(--unknown)' },
+};
+const MARKER_HEX = { diveable: '#3fcf8e', marginal: '#f2b84b', rough: '#f0645f', unknown: '#6d8494' };
+
+function scoreConditions({ wind, gust, wave }) {
+  if (wind == null || wave == null) return 'unknown';
+  const g = gust ?? wind;
+  const under = (t) => wind < t.windKmh && g < t.gustKmh && wave < t.waveM;
+  if (under(CONFIG.score.diveable)) return 'diveable';
+  if (under(CONFIG.score.marginal)) return 'marginal';
+  return 'rough';
+}
+
+/* ==========================================================================
+   FEEDBACK STORAGE: the one place to wire the Kimi platform database.
+   Replace the bodies of submit() and recent() with Kimi's DB calls
+   (collection name: "dive_feedback"). Until then it falls back to this
+   browser's localStorage, which other users cannot see.
+   ========================================================================== */
+const FeedbackStore = {
+  collection: 'dive_feedback',
+  isShared: false,  // set true once submit/recent use the Kimi platform DB
+
+  // entry: { name, siteId, siteName, outcome, notes, predicted, conditions, createdAt }
+  async submit(entry) {
+    // TODO(Kimi): insert `entry` into the platform database collection `this.collection`.
+    const all = this._local();
+    all.push(entry);
+    try { localStorage.setItem(this.collection, JSON.stringify(all.slice(-200))); } catch {}
+  },
+
+  // returns the newest `n` entries, newest first
+  async recent(n) {
+    // TODO(Kimi): query `this.collection` ordered by createdAt desc, limit n.
+    return this._local().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, n);
+  },
+
+  _local() {
+    try { return JSON.parse(localStorage.getItem(this.collection) || '[]'); } catch { return []; }
+  },
+};
+
+/* ==========================================================================
+   Data
+   ========================================================================== */
+const state = { sites: {}, warnings: null, updatedAt: null };
+
+function hkNowHourKey() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: CONFIG.tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:00`;
+}
+function hkDateKey() { return hkNowHourKey().slice(0, 10); }
+function hkClock(d = new Date()) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: CONFIG.tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+}
+
+async function getJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+async function fetchSite(site) {
+  const tz = encodeURIComponent(CONFIG.tz);
+  const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${site.lat}&longitude=${site.lon}` +
+    `&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature&timezone=${tz}&forecast_days=2`;
+  const windUrl = `https://api.open-meteo.com/v1/forecast?latitude=${site.lat}&longitude=${site.lon}` +
+    `&hourly=wind_speed_10m,wind_gusts_10m&wind_speed_unit=kmh&timezone=${tz}&forecast_days=2`;
+  const [marine, wind] = await Promise.all([getJSON(marineUrl), getJSON(windUrl)]);
+
+  // Join both hourly series on their local-time keys.
+  const w = wind.hourly, m = marine.hourly;
+  const windAt = new Map(w.time.map((t, i) => [t, { wind: w.wind_speed_10m[i], gust: w.wind_gusts_10m[i] }]));
+  const nowKey = hkNowHourKey();
+  const hours = [];
+  m.time.forEach((t, i) => {
+    if (t < nowKey || hours.length >= CONFIG.forecastHours) return;
+    const ww = windAt.get(t) || {};
+    const h = {
+      time: t,
+      wind: ww.wind ?? null, gust: ww.gust ?? null,
+      wave: m.wave_height[i], waveDir: m.wave_direction[i], period: m.wave_period[i],
+      sst: m.sea_surface_temperature[i],
+    };
+    h.score = scoreConditions(h);
+    hours.push(h);
+  });
+  if (!hours.length) throw new Error('No forecast hours returned');
+  return { hours, now: hours[0] };
+}
+
+async function fetchWarnings() {
+  const data = await getJSON('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en');
+  return Object.values(data || {}).filter(w => w && w.actionCode !== 'CANCEL');
+}
+
+async function refreshAll() {
+  const btn = document.getElementById('refresh');
+  btn.disabled = true;
+  const results = await Promise.allSettled(CONFIG.sites.map(fetchSite));
+  results.forEach((r, i) => {
+    const id = CONFIG.sites[i].id;
+    state.sites[id] = r.status === 'fulfilled' ? r.value : { error: r.reason?.message || 'Failed to load' };
+  });
+  try { state.warnings = await fetchWarnings(); } catch { state.warnings = 'error'; }
+  state.updatedAt = new Date();
+  btn.disabled = false;
+  render();
+  checkNotifications();
+}
+
+/* ==========================================================================
+   Rendering
+   ========================================================================== */
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'style') n.style.cssText = v;
+    else if (k === 'text') n.textContent = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  kids.flat().forEach(k => k != null && n.append(k));
+  return n;
+};
+const fmt = (v, d = 0) => (v == null || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
+const compass = (deg) => deg == null ? '' : ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg / 45) % 8];
+
+const expanded = new Set();
+let map, markers = {};
+
+function render() {
+  document.getElementById('updated').textContent = state.updatedAt ? `updated ${hkClock(state.updatedAt)} HKT` : 'Loading…';
+  renderBanner();
+  renderCards();
+  renderMarkers();
+}
+
+function renderBanner() {
+  const b = document.getElementById('banner');
+  b.replaceChildren();
+  const w = state.warnings;
+  if (w === 'error') {
+    b.className = 'banner clear';
+    b.append(el('h2', { text: 'HKO warnings' }), el('div', { class: 'error', text: 'Could not load HKO warnings. Check hko.gov.hk directly.' }));
+  } else if (w && w.length) {
+    b.className = 'banner';
+    b.append(el('h2', { text: `${w.length} HKO warning${w.length > 1 ? 's' : ''} in force` }),
+      el('ul', {}, w.map(x => el('li', {}, el('b', { text: x.code || '' }), x.name || x.code))));
+  } else {
+    b.className = 'banner clear';
+    b.append(el('h2', { text: w ? 'No HKO warnings in force' : 'HKO warnings' }));
+  }
+}
+
+function metric(label, value, unit, isOver) {
+  return el('div', { class: 'metric' },
+    el('dt', { text: label }),
+    el('dd', isOver ? { class: 'over' } : {}, value, value === '—' ? null : el('small', { text: unit })));
+}
+
+function renderCards() {
+  const wrap = document.getElementById('cards');
+  const notifyOn = notifyPrefs();
+  wrap.replaceChildren(...CONFIG.sites.map(site => {
+    const data = state.sites[site.id];
+    const now = data?.now;
+    const level = now ? now.score : 'unknown';
+    const L = LEVELS[level];
+    const d = CONFIG.score.diveable;
+    const isOpen = expanded.has(site.id);
+
+    const head = el('button', {
+      class: 'card-head', type: 'button', 'aria-expanded': String(isOpen), 'aria-controls': `body-${site.id}`,
+      onclick: () => { isOpen ? expanded.delete(site.id) : expanded.add(site.id); renderCards(); },
+    },
+      el('div', { class: 'title-row' },
+        el('div', {}, el('h3', { class: 'site-name', text: site.name }), el('div', { class: 'site-note', text: site.note })),
+        el('span', { class: 'badge', text: L.label })),
+      data?.error
+        ? el('div', { class: 'error', text: `Forecast unavailable: ${data.error}` })
+        : el('dl', { class: 'metrics', style: 'margin:0' },
+            metric('Wind', fmt(now?.wind), 'km/h', now?.wind >= d.windKmh),
+            metric('Gusts', fmt(now?.gust), 'km/h', now?.gust >= d.gustKmh),
+            metric('Waves', fmt(now?.wave, 1), `m ${compass(now?.waveDir)}`, now?.wave >= d.waveM),
+            metric('Period', fmt(now?.period, 0), 's'),
+            metric('Sea', fmt(now?.sst, 1), '°C')),
+      el('div', { class: 'expand-hint' },
+        el('span', { text: now ? `Now · ${now.time.slice(11)} HKT` : '' }),
+        el('span', { text: isOpen ? 'Hide 12-hour forecast ▴' : 'Show 12-hour forecast ▾' })));
+
+    const body = el('div', { class: 'card-body', id: `body-${site.id}` });
+    body.hidden = !isOpen;
+    if (data?.hours) {
+      body.append(
+        el('div', { class: 'strip-wrap' }, el('div', { class: 'strip' }, data.hours.map(h =>
+          el('div', { class: 'hour', style: `--c:${LEVELS[h.score].color}`, title: LEVELS[h.score].label },
+            el('div', { class: 't', text: h.time.slice(11, 16) }),
+            el('div', { class: 'w', text: `${fmt(h.wind)}/${fmt(h.gust)}` }),
+            el('div', { text: `${fmt(h.wave, 1)} m` }))))),
+        el('div', { class: 'strip-legend', text: 'Each hour: wind/gust km/h, wave height. Top colour = score.' }));
+    }
+    const toggle = el('input', {
+      type: 'checkbox', id: `notify-${site.id}`, role: 'switch',
+      onchange: (e) => setNotify(site.id, e.target.checked, e.target),
+    });
+    toggle.checked = !!notifyOn[site.id];
+    body.append(
+      el('div', { class: 'notify' },
+        el('label', { for: `notify-${site.id}`, text: 'Notify me when it turns diveable' }),
+        el('span', { class: 'switch' }, toggle, el('span'))),
+      el('div', { class: 'notify-msg', id: `notify-msg-${site.id}` }));
+
+    return el('article', { class: 'card', id: `card-${site.id}`, style: `--c:${L.color};--c-metric:${level === 'rough' ? 'var(--bad)' : 'var(--warn)'}` }, head, body);
+  }));
+}
+
+function initMap() {
+  if (!window.L) { document.getElementById('map').textContent = 'Map failed to load.'; return; }
+  map = L.map('map', { zoomControl: false, attributionControl: true, scrollWheelZoom: false }).setView(CONFIG.map.center, CONFIG.map.zoom);
+  // Esri dark gray canvas: keyless (CARTO's dark tiles now require an API key).
+  const esri = (layer) => `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${layer}/MapServer/tile/{z}/{y}/{x}`;
+  L.tileLayer(esri('World_Dark_Gray_Base'), {
+    maxZoom: 16, attribution: 'Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
+  }).addTo(map);
+  L.tileLayer(esri('World_Dark_Gray_Reference'), { maxZoom: 16 }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  CONFIG.sites.forEach(site => {
+    markers[site.id] = L.circleMarker([site.lat, site.lon], {
+      radius: 10, weight: 2, color: '#08131b', fillColor: MARKER_HEX.unknown, fillOpacity: 1,
+    }).addTo(map)
+      .bindTooltip(site.name, { direction: 'top', offset: [0, -8] })
+      .on('click', () => focusCard(site.id));
+  });
+  map.fitBounds(CONFIG.sites.map(s => [s.lat, s.lon]), { padding: [30, 30] });
+}
+
+function renderMarkers() {
+  CONFIG.sites.forEach(site => {
+    const level = state.sites[site.id]?.now?.score || 'unknown';
+    markers[site.id]?.setStyle({ fillColor: MARKER_HEX[level] })
+      .setTooltipContent(`${site.name} · ${LEVELS[level].label}`);
+  });
+}
+
+function focusCard(id) {
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  card.classList.add('flash');
+  setTimeout(() => card.classList.remove('flash'), 1400);
+}
+
+function renderRules() {
+  const { diveable: d, marginal: m } = CONFIG.score;
+  document.getElementById('rules').replaceChildren(
+    el('div', {}, el('b', { style: 'color:var(--good)', text: 'Diveable: ' }), `wind < ${d.windKmh} km/h, gusts < ${d.gustKmh} km/h and waves < ${d.waveM} m`),
+    el('div', {}, el('b', { style: 'color:var(--warn)', text: 'Marginal: ' }), `wind < ${m.windKmh} km/h, gusts < ${m.gustKmh} km/h and waves < ${m.waveM} m`),
+    el('div', {}, el('b', { style: 'color:var(--bad)', text: 'Rough: ' }), 'anything worse'),
+    el('div', { text: 'Wave height is significant wave height at the nearest open-sea model cell, so sheltered coves can be calmer than shown.' }));
+}
+
+/* ==========================================================================
+   Notifications: max one alert per site per HK calendar day
+   ========================================================================== */
+const NOTIFY_KEY = 'hkdive.notify', ALERTED_KEY = 'hkdive.alerted';
+const readLS = (k) => { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch { return {}; } };
+const writeLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const notifyPrefs = () => readLS(NOTIFY_KEY);
+const lastScore = {};
+
+async function setNotify(id, on, input) {
+  const msg = document.getElementById(`notify-msg-${id}`);
+  msg.textContent = '';
+  if (on) {
+    if (!('Notification' in window)) { input.checked = false; msg.textContent = 'This browser does not support notifications.'; return; }
+    const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (perm !== 'granted') { input.checked = false; msg.textContent = 'Notifications are blocked. Allow them in your browser settings.'; return; }
+    // Count the current score as already seen, so only a change to diveable alerts.
+    lastScore[id] = state.sites[id]?.now?.score;
+    msg.textContent = 'Checks every 15 min while this page stays open.';
+  }
+  const prefs = notifyPrefs();
+  if (on) prefs[id] = true; else delete prefs[id];
+  writeLS(NOTIFY_KEY, prefs);
+}
+
+function checkNotifications() {
+  const prefs = notifyPrefs();
+  const alerted = readLS(ALERTED_KEY);
+  const today = hkDateKey();
+  CONFIG.sites.forEach(site => {
+    const score = state.sites[site.id]?.now?.score;
+    const prev = lastScore[site.id];
+    lastScore[site.id] = score;
+    if (!prefs[site.id] || score !== 'diveable' || prev === 'diveable') return;
+    if (alerted[site.id] === today) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const n = state.sites[site.id].now;
+    try {
+      new Notification(`${site.name} is diveable`, {
+        body: `Wind ${fmt(n.wind)} km/h, gusts ${fmt(n.gust)} km/h, waves ${fmt(n.wave, 1)} m`,
+        tag: `hkdive-${site.id}`,
+      });
+      alerted[site.id] = today;
+    } catch {}
+  });
+  writeLS(ALERTED_KEY, alerted);
+}
+
+/* ==========================================================================
+   Feedback form
+   ========================================================================== */
+const OUTCOME_COLOR = { good: 'var(--good)', 'so-so': 'var(--warn)', bad: 'var(--bad)' };
+
+function initFeedback() {
+  const sel = document.getElementById('fb-site');
+  sel.append(el('option', { value: '', text: 'Choose a site' }), ...CONFIG.sites.map(s => el('option', { value: s.id, text: s.name })));
+  document.getElementById('feedback').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const status = document.getElementById('fb-status');
+    const siteId = sel.value;
+    const outcome = document.querySelector('input[name=outcome]:checked')?.value;
+    if (!siteId || !outcome) { status.textContent = 'Pick a site and how the water was.'; return; }
+    const site = CONFIG.sites.find(s => s.id === siteId);
+    const now = state.sites[siteId]?.now;
+    const entry = {
+      name: document.getElementById('fb-name').value.trim().slice(0, 60),
+      siteId, siteName: site.name, outcome,
+      notes: document.getElementById('fb-notes').value.trim().slice(0, 1000),
+      // What the dashboard predicted at submit time, for tuning CONFIG.score later.
+      predicted: now?.score || 'unknown',
+      conditions: now ? { wind: now.wind, gust: now.gust, wave: now.wave, period: now.period, sst: now.sst, hour: now.time } : null,
+      createdAt: new Date().toISOString(),
+    };
+    const btn = document.getElementById('fb-submit');
+    btn.disabled = true; status.textContent = 'Sending…';
+    try {
+      await FeedbackStore.submit(entry);
+      e.target.reset();
+      status.textContent = 'Thanks, report saved.';
+      renderRecent();
+    } catch (err) {
+      status.textContent = `Could not save your report (${err.message}). Try again.`;
+    } finally { btn.disabled = false; }
+  });
+}
+
+async function renderRecent() {
+  const ul = document.getElementById('recent');
+  try {
+    const items = await FeedbackStore.recent(CONFIG.recentFeedbackCount);
+    if (!items.length) { ul.replaceChildren(el('li', { class: 'empty', text: 'No reports yet. Be the first after your next dive.' })); return; }
+    ul.replaceChildren(...items.map(f => {
+      const when = new Intl.DateTimeFormat('en-GB', { timeZone: CONFIG.tz, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(f.createdAt));
+      return el('li', { style: `--oc:${OUTCOME_COLOR[f.outcome] || 'var(--line)'}` },
+        el('div', { class: 'meta' }, el('b', { text: f.outcome }), ` · ${f.siteName} · ${f.name || 'Anonymous'} · ${when}`,
+          f.predicted && f.predicted !== 'unknown' ? ` · forecast said ${LEVELS[f.predicted]?.label.toLowerCase()}` : ''),
+        f.notes ? el('div', { class: 'note', text: f.notes }) : null);
+    }));
+  } catch {
+    ul.replaceChildren(el('li', { class: 'error', text: 'Could not load recent reports.' }));
+  }
+}
+
+/* ==========================================================================
+   Boot
+   ========================================================================== */
+initMap();
+renderRules();
+initFeedback();
+render();
+renderRecent();
+refreshAll();
+document.getElementById('refresh').addEventListener('click', refreshAll);
+// Refresh every refreshMinutes, or every notifyCheckMinutes while a site is being watched.
+setInterval(() => {
+  const age = Date.now() - (state.updatedAt?.getTime() ?? 0);
+  const due = Object.keys(notifyPrefs()).length ? CONFIG.notifyCheckMinutes : CONFIG.refreshMinutes;
+  if (age >= due * 60 * 1000 - 5000) refreshAll();
+}, 60 * 1000);
+</script>
+</body>
+</html>
