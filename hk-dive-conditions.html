@@ -23,6 +23,7 @@
     --warn: #f2b84b;
     --bad: #f0645f;
     --unknown: #6d8494;
+    --silt: #c9955f;
     --banner-bg: #3a1d17;
     --banner-line: #7a3528;
     --display: "Barlow Condensed", "Arial Narrow", sans-serif;
@@ -114,6 +115,14 @@
   .metric dd { margin: 0; font: 500 17px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .metric dd small { font-size: 11px; color: var(--muted); margin-left: 1px; }
   .metric dd.over { color: var(--c-metric); }
+  .why { font-size: 13px; color: var(--text); opacity: .85; }
+  .clarity { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .chip { font: 600 11px var(--body); letter-spacing: .08em; text-transform: uppercase; padding: 1px 8px; border-radius: 4px; border: 1px solid currentColor; }
+  .chip-clear { color: var(--accent); }
+  .chip-settling { color: var(--muted); }
+  .chip-stirred { color: var(--silt); }
+  .tide { display: flex; flex-wrap: wrap; gap: 4px 12px; font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tide-label { letter-spacing: .08em; text-transform: uppercase; font-family: var(--body); font-size: 11px; }
   .expand-hint { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
   .card-body { padding: 0 14px 14px; display: grid; gap: 12px; }
   .strip-wrap { overflow-x: auto; margin-inline: -14px; padding-inline: 14px; }
@@ -273,13 +282,51 @@ const CONFIG = {
     diveable: { windKmh: 22, gustKmh: 40, waveM: 0.5 },   // all strictly below → green
     marginal: { windKmh: 32, gustKmh: 55, waveM: 1.0 },   // all strictly below → amber
     // anything else → rough (red); missing wind or wave → no data (grey)
+    // Wind is scored on its raw speed whatever its direction: offshore wind
+    // flattens the water but can carry swimmers out, so it is not discounted.
   },
+  // Waves are forecast on a ~9 km offshore grid, so each site scales them by its
+  // exposure (the swell-window method surf forecasters use):
+  //   local height = offshore height × shelter × cos(wave direction − facing),
+  //   and 0 when the waves come from outside openSector (or from behind).
+  // Swell and wind waves are scaled separately, then combined by energy.
+  //   facing:     compass direction the site looks out to sea (degrees)
+  //   openSector: [from, to] directions open sea can reach it from, clockwise
+  //   shelter:    0–1, how much islands and headlands still let through
+  // These angles were read off a map and are first guesses: calibrate them
+  // against diver reports (each report stores the wave and wind directions).
+  // tideStation: nearest HKO tide station (HLT dataset).
   sites: [
-    { id: 'shek-o',  name: 'Shek O',                       lat: 22.2293, lon: 114.2500, note: 'Rocky entries, exposed to E–SE swell' },
-    { id: 'stanley', name: 'Stanley',                      lat: 22.2190, lon: 114.2100, note: 'Semi-sheltered, boat traffic' },
-    { id: 'cwb',     name: 'Clear Water Bay (Tai Au Mun)', lat: 22.2836, lon: 114.2936, note: 'Strong currents possible' },
-    { id: 'sai-kung',name: 'Sai Kung',                     lat: 22.3814, lon: 114.2708, note: 'Inner port, gateway to many sites' },
+    { id: 'shek-o',  name: 'Shek O',                       lat: 22.2293, lon: 114.2500, note: 'Rocky entries, exposed to E–SE swell',
+      facing: 100, openSector: [30, 170],  shelter: 0.9, tideStation: 'WAG' },
+    { id: 'stanley', name: 'Stanley',                      lat: 22.2190, lon: 114.2100, note: 'Semi-sheltered, boat traffic',
+      facing: 240, openSector: [190, 280], shelter: 0.6, tideStation: 'WAG' },
+    { id: 'cwb',     name: 'Clear Water Bay (Tai Au Mun)', lat: 22.2836, lon: 114.2936, note: 'Strong currents possible',
+      facing: 100, openSector: [40, 160],  shelter: 0.7, tideStation: 'TMW' },
+    { id: 'sai-kung',name: 'Sai Kung',                     lat: 22.3814, lon: 114.2708, note: 'Inner port, gateway to many sites',
+      facing: 150, openSector: [120, 170], shelter: 0.3, tideStation: 'TMW' },
+    { id: 'sharp',   name: 'Sharp Island (Kiu Tsui)',      lat: 22.3656, lon: 114.2903, note: 'Shallow and calm, good for beginners; kaito from Sai Kung pier',
+      facing: 250, openSector: [200, 290], shelter: 0.3, tideStation: 'TMW' },
+    { id: 'hoi-ha',  name: 'Hoi Ha Wan',                   lat: 22.4725, lon: 114.3380, note: 'Marine park with coral, sheltered bay; no fishing or collecting',
+      facing: 0,   openSector: [320, 40],  shelter: 0.3, tideStation: 'KLW' },
+    { id: 'long-ke', name: 'Long Ke Wan',                  lat: 22.3780, lon: 114.3760, note: 'Open to the east, often the clearest water; long hike in',
+      facing: 100, openSector: [30, 170],  shelter: 0.9, tideStation: 'TMW' },
+    { id: 'ping-chau', name: 'Tung Ping Chau',             lat: 22.5440, lon: 114.4330, note: 'Mirs Bay, clearest water in HK; weekend ferry only',
+      facing: 180, openSector: [120, 240], shelter: 0.6, tideStation: 'KLW' },
   ],
+  // Clarity hint: a rough guide shown beside the score, never part of it.
+  // Hong Kong has no published numbers for this; these are first guesses to tune
+  // with diver reports. An hour "stirs up" a site when its local waves, the
+  // onshore part of the wind, or the rain over the previous 24 h pass a limit.
+  clarity: {
+    lookbackDays: 3,          // history fetched with each refresh
+    stirWaveM: 0.5,           // local wave height that stirs up silt
+    stirOnshoreWindKmh: 25,   // wind speed × cos(angle to the site's facing)
+    heavyRain24hMm: 30,       // runoff and river silt
+    stirredHours: 24,         // stirred this recently → "Stirred up"; older → "Settling"
+  },
+  exposureWords: { headOnDeg: 30, angledDeg: 70 },  // for the "why" line on each card
+  tideEventsShown: 3,
   forecastHours: 12,
   refreshMinutes: 30,
   notifyCheckMinutes: 15,
@@ -303,6 +350,44 @@ function scoreConditions({ wind, gust, wave }) {
   if (under(CONFIG.score.diveable)) return 'diveable';
   if (under(CONFIG.score.marginal)) return 'marginal';
   return 'rough';
+}
+
+// Signed difference between two compass directions, in −180…180.
+const angleDiff = (a, b) => ((a - b + 540) % 360) - 180;
+const inSector = (dir, [from, to]) => from <= to ? dir >= from && dir <= to : dir >= from || dir <= to;
+
+// Fraction (0–1) of an offshore wave height arriving from `dir` that reaches the site.
+function exposure(site, dir) {
+  if (dir == null || !inSector(dir, site.openSector)) return 0;
+  return site.shelter * Math.max(0, Math.cos(angleDiff(dir, site.facing) * Math.PI / 180));
+}
+
+// Local wave estimate from the swell and wind-wave parts; falls back to the total.
+function localWave(site, h) {
+  const hasParts = h.swell != null || h.windWave != null;
+  if (!hasParts) return h.waveOffshore == null ? null : h.waveOffshore * exposure(site, h.waveDir);
+  const s = (h.swell ?? 0) * exposure(site, h.swellDir);
+  const w = (h.windWave ?? 0) * exposure(site, h.windWaveDir);
+  return Math.hypot(s, w);
+}
+
+// Clarity hint from the past hours (oldest first): when did something last stir the site up?
+const onshoreWind = (site, h) => (h.wind == null || h.windDir == null) ? 0
+  : h.wind * Math.cos(angleDiff(h.windDir, site.facing) * Math.PI / 180);
+function clarityHint(site, past) {
+  const c = CONFIG.clarity;
+  if (!past.length) return null;
+  let last = null;
+  past.forEach((h, i) => {
+    const rain24 = past.slice(Math.max(0, i - 23), i + 1).reduce((sum, x) => sum + (x.rain ?? 0), 0);
+    const cause = h.wave >= c.stirWaveM ? 'waves'
+      : onshoreWind(site, h) >= c.stirOnshoreWindKmh ? 'onshore wind'
+      : rain24 >= c.heavyRain24hMm ? 'heavy rain' : null;
+    if (cause) last = { hoursAgo: past.length - i, cause };
+  });
+  if (!last) return { level: 'clear', label: 'Likely clear', text: `No big waves, strong onshore wind or heavy rain here in ${c.lookbackDays} days.` };
+  const level = last.hoursAgo <= c.stirredHours ? 'stirred' : 'settling';
+  return { level, label: level === 'stirred' ? 'Stirred up' : 'Settling', text: `Last stirred up by ${last.cause} ${last.hoursAgo} h ago.` };
 }
 
 /* ==========================================================================
@@ -356,33 +441,80 @@ async function getJSON(url) {
   return res.json();
 }
 
-async function fetchSite(site) {
+// One marine and one wind request for all sites (Open-Meteo takes coordinate lists
+// and answers with one result per site, in order), keeping well under its rate limit.
+async function fetchAllSites() {
   const tz = encodeURIComponent(CONFIG.tz);
-  const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${site.lat}&longitude=${site.lon}` +
-    `&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature&timezone=${tz}&forecast_days=2`;
-  const windUrl = `https://api.open-meteo.com/v1/forecast?latitude=${site.lat}&longitude=${site.lon}` +
-    `&hourly=wind_speed_10m,wind_gusts_10m&wind_speed_unit=kmh&timezone=${tz}&forecast_days=2`;
+  const lats = CONFIG.sites.map(s => s.lat).join(','), lons = CONFIG.sites.map(s => s.lon).join(',');
+  const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}` +
+    `&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature` +
+    `,swell_wave_height,swell_wave_direction,wind_wave_height,wind_wave_direction&timezone=${tz}&forecast_days=2&past_days=${CONFIG.clarity.lookbackDays}`;
+  const windUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+    `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation&wind_speed_unit=kmh&timezone=${tz}&forecast_days=2&past_days=${CONFIG.clarity.lookbackDays}`;
   const [marine, wind] = await Promise.all([getJSON(marineUrl), getJSON(windUrl)]);
+  const asList = (x) => Array.isArray(x) ? x : [x];
+  const ms = asList(marine), ws = asList(wind);
+  return CONFIG.sites.map((site, i) => {
+    try { return buildSite(site, ms[i], ws[i]); } catch (err) { return { error: err.message }; }
+  });
+}
 
+function buildSite(site, marine, wind) {
+  if (!marine?.hourly || !wind?.hourly) throw new Error('No forecast returned');
   // Join both hourly series on their local-time keys.
   const w = wind.hourly, m = marine.hourly;
-  const windAt = new Map(w.time.map((t, i) => [t, { wind: w.wind_speed_10m[i], gust: w.wind_gusts_10m[i] }]));
+  const windAt = new Map(w.time.map((t, i) => [t, { wind: w.wind_speed_10m[i], gust: w.wind_gusts_10m[i], dir: w.wind_direction_10m[i], rain: w.precipitation[i] }]));
   const nowKey = hkNowHourKey();
-  const hours = [];
-  m.time.forEach((t, i) => {
-    if (t < nowKey || hours.length >= CONFIG.forecastHours) return;
+  const all = m.time.map((t, i) => {
     const ww = windAt.get(t) || {};
     const h = {
       time: t,
-      wind: ww.wind ?? null, gust: ww.gust ?? null,
-      wave: m.wave_height[i], waveDir: m.wave_direction[i], period: m.wave_period[i],
+      wind: ww.wind ?? null, gust: ww.gust ?? null, windDir: ww.dir ?? null, rain: ww.rain ?? null,
+      waveOffshore: m.wave_height[i], waveDir: m.wave_direction[i], period: m.wave_period[i],
+      swell: m.swell_wave_height?.[i] ?? null, swellDir: m.swell_wave_direction?.[i] ?? null,
+      windWave: m.wind_wave_height?.[i] ?? null, windWaveDir: m.wind_wave_direction?.[i] ?? null,
       sst: m.sea_surface_temperature[i],
     };
+    h.wave = localWave(site, h);  // the score uses the site's local estimate
     h.score = scoreConditions(h);
-    hours.push(h);
+    return h;
   });
+  const hours = all.filter(h => h.time >= nowKey).slice(0, CONFIG.forecastHours);
+  const past = all.filter(h => h.time < nowKey).slice(-CONFIG.clarity.lookbackDays * 24);
   if (!hours.length) throw new Error('No forecast hours returned');
-  return { hours, now: hours[0] };
+  return { hours, now: hours[0], clarity: clarityHint(site, past) };
+}
+
+// HKO predicted high and low tides for a station, this month and next, as [{time, height, kind}].
+const tideCache = {};
+async function fetchTides(station) {
+  const now = hkNowHourKey();
+  const y = +now.slice(0, 4), mo = +now.slice(5, 7);
+  const months = [[y, mo], mo === 12 ? [y + 1, 1] : [y, mo + 1]];
+  const key = `${station}-${y}-${mo}`;
+  if (tideCache[key]) return tideCache[key];
+  const res = await Promise.allSettled(months.map(([yy, mm]) =>
+    getJSON(`https://data.weather.gov.hk/weatherAPI/opendata/opendata.php?dataType=HLT&station=${station}&year=${yy}&month=${mm}&rformat=json`)
+      .then(d => ({ yy, rows: d.data || [] }))));
+  const events = [];
+  res.forEach(r => {
+    if (r.status !== 'fulfilled') return;
+    r.value.rows.forEach(([m, d, ...pairs]) => {
+      for (let i = 0; i + 1 < pairs.length; i += 2) {
+        if (!pairs[i]) continue;
+        const t = pairs[i].padStart(4, '0');
+        events.push({ time: `${r.value.yy}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${t.slice(0, 2)}:${t.slice(2)}`, height: +pairs[i + 1] });
+      }
+    });
+  });
+  events.sort((a, b) => a.time.localeCompare(b.time));
+  // The feed does not label highs and lows: compare each tide with its neighbours.
+  events.forEach((e, i) => {
+    const nb = events[i + 1] ?? events[i - 1];
+    e.kind = nb ? (e.height > nb.height ? 'high' : 'low') : '';
+  });
+  if (events.length) tideCache[key] = events;
+  return events;
 }
 
 async function fetchWarnings() {
@@ -393,12 +525,13 @@ async function fetchWarnings() {
 async function refreshAll() {
   const btn = document.getElementById('refresh');
   btn.disabled = true;
-  const results = await Promise.allSettled(CONFIG.sites.map(fetchSite));
-  results.forEach((r, i) => {
-    const id = CONFIG.sites[i].id;
-    state.sites[id] = r.status === 'fulfilled' ? r.value : { error: r.reason?.message || 'Failed to load' };
-  });
-  try { state.warnings = await fetchWarnings(); } catch { state.warnings = 'error'; }
+  let built;
+  try { built = await fetchAllSites(); } catch (err) { built = CONFIG.sites.map(() => ({ error: err.message || 'Failed to load' })); }
+  CONFIG.sites.forEach((site, i) => { state.sites[site.id] = built[i]; });
+  const stations = [...new Set(CONFIG.sites.map(s => s.tideStation))];
+  const [warn, ...tides] = await Promise.allSettled([fetchWarnings(), ...stations.map(fetchTides)]);
+  state.warnings = warn.status === 'fulfilled' ? warn.value : 'error';
+  state.tides = Object.fromEntries(stations.map((st, i) => [st, tides[i].status === 'fulfilled' ? tides[i].value : []]));
   state.updatedAt = new Date();
   btn.disabled = false;
   render();
@@ -421,6 +554,49 @@ const el = (tag, attrs = {}, ...kids) => {
 };
 const fmt = (v, d = 0) => (v == null || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
 const compass = (deg) => deg == null ? '' : ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg / 45) % 8];
+
+// One plain sentence on why the site scores as it does.
+function whyLine(site, h) {
+  if (!h) return '';
+  const { headOnDeg, angledDeg } = CONFIG.exposureWords;
+  // Describe the wave part that reaches the site most; if none does, the bigger one offshore.
+  const parts = [
+    { kind: 'swell', height: h.swell ?? 0, dir: h.swellDir },
+    { kind: 'wind waves', height: h.windWave ?? 0, dir: h.windWaveDir },
+  ].filter(p => p.dir != null).map(p => ({ ...p, here: p.height * exposure(site, p.dir) }));
+  if (!parts.length && h.waveDir != null) parts.push({ kind: 'waves', height: h.waveOffshore ?? 0, dir: h.waveDir, here: h.wave ?? 0 });
+  parts.sort((a, b) => (b.here - a.here) || (b.height - a.height));
+  let waves = '';
+  const p = parts[0];
+  if (p) {
+    const one = p.kind === 'swell';  // singular verb
+    const off = Math.abs(angleDiff(p.dir, site.facing));
+    const how = p.here === 0 ? (one ? 'is blocked here' : 'are blocked here')
+      : off <= headOnDeg ? (one ? 'hits this site head-on' : 'hit this site head-on')
+      : off <= angledDeg ? (one ? 'arrives at an angle' : 'arrive at an angle')
+      : (one ? 'mostly misses this site' : 'mostly miss this site');
+    const sheltered = p.here > 0 && site.shelter < 0.5 ? ', though islands shelter it' : '';
+    waves = `${p.kind[0].toUpperCase() + p.kind.slice(1)} from ${compass(p.dir)} ${how}${sheltered} (site faces ${compass(site.facing)}).`;
+  }
+  let wind = '';
+  if (h.windDir != null && h.wind != null) {
+    const c = Math.cos(angleDiff(h.windDir, site.facing) * Math.PI / 180);
+    wind = ` Wind from ${compass(h.windDir)} is ${c > 0.5 ? 'onshore' : c < -0.5 ? 'offshore' : 'cross-shore'}.`;
+  }
+  return waves + wind;
+}
+
+function tideLine(site) {
+  const events = state.tides?.[site.tideStation] || [];
+  const nowKey = `${hkDateKey()}T${hkClock()}`;
+  const next = events.filter(e => e.time >= nowKey).slice(0, CONFIG.tideEventsShown);
+  if (!next.length) return null;
+  const today = hkDateKey();
+  return el('div', { class: 'tide' },
+    el('span', { class: 'tide-label', text: 'Tides' }),
+    next.map(e => el('span', { class: 'tide-ev' },
+      `${e.kind === 'high' ? '▲' : '▼'} ${e.kind} ${e.time.slice(0, 10) === today ? '' : 'tmrw '}${e.time.slice(11)} · ${e.height.toFixed(1)} m`)));
+}
 
 const expanded = new Set();
 let map, markers = {};
@@ -478,9 +654,14 @@ function renderCards() {
         : el('dl', { class: 'metrics', style: 'margin:0' },
             metric('Wind', fmt(now?.wind), 'km/h', now?.wind >= d.windKmh),
             metric('Gusts', fmt(now?.gust), 'km/h', now?.gust >= d.gustKmh),
-            metric('Waves', fmt(now?.wave, 1), `m ${compass(now?.waveDir)}`, now?.wave >= d.waveM),
+            metric('Waves here', fmt(now?.wave, 1), 'm', now?.wave >= d.waveM),
             metric('Period', fmt(now?.period, 0), 's'),
             metric('Sea', fmt(now?.sst, 1), '°C')),
+      now ? el('div', { class: 'why', text: `${whyLine(site, now)} Offshore waves ${fmt(now.waveOffshore, 1)} m.` }) : null,
+      data?.clarity ? el('div', { class: 'clarity' },
+        el('span', { class: `chip chip-${data.clarity.level}`, text: data.clarity.label }),
+        el('span', { text: data.clarity.text })) : null,
+      tideLine(site),
       el('div', { class: 'expand-hint' },
         el('span', { text: now ? `Now · ${now.time.slice(11)} HKT` : '' }),
         el('span', { text: isOpen ? 'Hide 12-hour forecast ▴' : 'Show 12-hour forecast ▾' })));
@@ -494,7 +675,7 @@ function renderCards() {
             el('div', { class: 't', text: h.time.slice(11, 16) }),
             el('div', { class: 'w', text: `${fmt(h.wind)}/${fmt(h.gust)}` }),
             el('div', { text: `${fmt(h.wave, 1)} m` }))))),
-        el('div', { class: 'strip-legend', text: 'Each hour: wind/gust km/h, wave height. Top colour = score.' }));
+        el('div', { class: 'strip-legend', text: 'Each hour: wind/gust km/h, estimated wave height at this site. Top colour = score.' }));
     }
     const toggle = el('input', {
       type: 'checkbox', id: `notify-${site.id}`, role: 'switch',
@@ -554,7 +735,9 @@ function renderRules() {
     el('div', {}, el('b', { style: 'color:var(--good)', text: 'Diveable: ' }), `wind < ${d.windKmh} km/h, gusts < ${d.gustKmh} km/h and waves < ${d.waveM} m`),
     el('div', {}, el('b', { style: 'color:var(--warn)', text: 'Marginal: ' }), `wind < ${m.windKmh} km/h, gusts < ${m.gustKmh} km/h and waves < ${m.waveM} m`),
     el('div', {}, el('b', { style: 'color:var(--bad)', text: 'Rough: ' }), 'anything worse'),
-    el('div', { text: 'Wave height is significant wave height at the nearest open-sea model cell, so sheltered coves can be calmer than shown.' }));
+    el('div', { text: 'Waves are forecast offshore on a ~9 km grid. Each site scales them by the direction it faces, the directions open sea can reach it from, and how sheltered it is, so a cove facing away from the swell scores calmer. Those site angles are estimates being checked against diver reports.' }),
+    el('div', { text: `Water clarity is a separate rough guide, not part of the score: a site counts as stirred up by local waves of ${CONFIG.clarity.stirWaveM} m or more, onshore wind of ${CONFIG.clarity.stirOnshoreWindKmh} km/h or more, or ${CONFIG.clarity.heavyRain24hMm} mm of rain in a day, and settles over the following days. Your reports tune it.` }),
+    el('div', { text: 'Wind counts at full strength from any direction: offshore wind flattens the water but can carry swimmers out.' }));
 }
 
 /* ==========================================================================
@@ -596,7 +779,7 @@ function checkNotifications() {
     const n = state.sites[site.id].now;
     try {
       new Notification(`${site.name} is diveable`, {
-        body: `Wind ${fmt(n.wind)} km/h, gusts ${fmt(n.gust)} km/h, waves ${fmt(n.wave, 1)} m`,
+        body: `Wind ${fmt(n.wind)} km/h, gusts ${fmt(n.gust)} km/h, waves here ${fmt(n.wave, 1)} m`,
         tag: `hkdive-${site.id}`,
       });
       alerted[site.id] = today;
@@ -627,7 +810,13 @@ function initFeedback() {
       notes: document.getElementById('fb-notes').value.trim().slice(0, 1000),
       // What the dashboard predicted at submit time, for tuning CONFIG.score later.
       predicted: now?.score || 'unknown',
-      conditions: now ? { wind: now.wind, gust: now.gust, wave: now.wave, period: now.period, sst: now.sst, hour: now.time } : null,
+      conditions: now ? {
+        wind: now.wind, gust: now.gust, windDir: now.windDir,
+        waveLocal: now.wave, waveOffshore: now.waveOffshore, waveDir: now.waveDir, period: now.period,
+        swell: now.swell, swellDir: now.swellDir, windWave: now.windWave, windWaveDir: now.windWaveDir,
+        sst: now.sst, hour: now.time, clarity: state.sites[siteId]?.clarity?.level ?? null,
+        site: { facing: site.facing, openSector: site.openSector, shelter: site.shelter },
+      } : null,
       createdAt: new Date().toISOString(),
     };
     const btn = document.getElementById('fb-submit');
