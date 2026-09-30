@@ -157,35 +157,6 @@
   .rules { font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
   .rules b { font-weight: 600; }
 
-  /* Feedback */
-  form { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 12px; }
-  label, legend { font-size: 13px; color: var(--muted); }
-  .field { display: grid; gap: 4px; }
-  input[type=text], select, textarea {
-    background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; width: 100%;
-  }
-  textarea { min-height: 80px; resize: vertical; }
-  fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; }
-  .outcomes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .outcomes label {
-    position: relative; text-align: center; padding: 9px 4px; border-radius: 6px; cursor: pointer;
-    background: var(--surface-2); border: 1px solid var(--line); color: var(--text); font-size: 14px;
-  }
-  .outcomes input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-  .outcomes label:has(input:checked) { border-color: var(--oc); color: var(--oc); font-weight: 600; }
-  .outcomes label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .submit-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .primary {
-    background: var(--accent); color: #06121a; border: 0; border-radius: 6px; padding: 10px 18px;
-    font-weight: 600; cursor: pointer;
-  }
-  .primary:disabled { opacity: .5; cursor: default; }
-  .form-status { font-size: 13px; color: var(--muted); }
-  .recent { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
-  .recent li { border-left: 3px solid var(--oc, var(--line)); padding: 4px 0 4px 10px; display: grid; gap: 2px; }
-  .recent .meta { font-size: 12px; color: var(--muted); }
-  .recent .meta b { color: var(--oc); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-  .recent .note { font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .empty { color: var(--muted); font-size: 14px; }
 
   footer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; line-height: 1.6; }
@@ -228,38 +199,6 @@
   <section>
     <h2>How the score works</h2>
     <div class="rules" id="rules"></div>
-  </section>
-
-  <section>
-    <h2>How was the water?</h2>
-    <form id="feedback" novalidate>
-      <div class="field">
-        <label for="fb-name">Name (optional)</label>
-        <input type="text" id="fb-name" maxlength="60" autocomplete="nickname">
-      </div>
-      <div class="field">
-        <label for="fb-site">Site</label>
-        <select id="fb-site" required></select>
-      </div>
-      <fieldset>
-        <legend>Actual conditions</legend>
-        <div class="outcomes">
-          <label style="--oc:var(--good)"><input type="radio" name="outcome" id="fb-good" value="good">Good</label>
-          <label style="--oc:var(--warn)"><input type="radio" name="outcome" id="fb-soso" value="so-so">So-so</label>
-          <label style="--oc:var(--bad)"><input type="radio" name="outcome" id="fb-bad" value="bad">Bad</label>
-        </div>
-      </fieldset>
-      <div class="field">
-        <label for="fb-notes">Notes (visibility, current, surge, jellyfish…)</label>
-        <textarea id="fb-notes" maxlength="1000"></textarea>
-      </div>
-      <div class="submit-row">
-        <button class="primary" type="submit" id="fb-submit">Send report</button>
-        <span class="form-status" id="fb-status" role="status"></span>
-      </div>
-    </form>
-    <h2 style="margin-top:18px">Latest reports</h2>
-    <ul class="recent" id="recent"><li class="empty">Loading…</li></ul>
   </section>
 
   <footer>
@@ -330,7 +269,6 @@ const CONFIG = {
   forecastHours: 12,
   refreshMinutes: 30,
   notifyCheckMinutes: 15,
-  recentFeedbackCount: 5,
   map: { center: [22.30, 114.25], zoom: 11 },
   tz: 'Asia/Hong_Kong',
 };
@@ -389,35 +327,6 @@ function clarityHint(site, past) {
   const level = last.hoursAgo <= c.stirredHours ? 'stirred' : 'settling';
   return { level, label: level === 'stirred' ? 'Stirred up' : 'Settling', text: `Last stirred up by ${last.cause} ${last.hoursAgo} h ago.` };
 }
-
-/* ==========================================================================
-   FEEDBACK STORAGE: the one place to wire the Kimi platform database.
-   Replace the bodies of submit() and recent() with Kimi's DB calls
-   (collection name: "dive_feedback"). Until then it falls back to this
-   browser's localStorage, which other users cannot see.
-   ========================================================================== */
-const FeedbackStore = {
-  collection: 'dive_feedback',
-  isShared: false,  // set true once submit/recent use the Kimi platform DB
-
-  // entry: { name, siteId, siteName, outcome, notes, predicted, conditions, createdAt }
-  async submit(entry) {
-    // TODO(Kimi): insert `entry` into the platform database collection `this.collection`.
-    const all = this._local();
-    all.push(entry);
-    try { localStorage.setItem(this.collection, JSON.stringify(all.slice(-200))); } catch {}
-  },
-
-  // returns the newest `n` entries, newest first
-  async recent(n) {
-    // TODO(Kimi): query `this.collection` ordered by createdAt desc, limit n.
-    return this._local().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, n);
-  },
-
-  _local() {
-    try { return JSON.parse(localStorage.getItem(this.collection) || '[]'); } catch { return []; }
-  },
-};
 
 /* ==========================================================================
    Data
@@ -789,74 +698,11 @@ function checkNotifications() {
 }
 
 /* ==========================================================================
-   Feedback form
-   ========================================================================== */
-const OUTCOME_COLOR = { good: 'var(--good)', 'so-so': 'var(--warn)', bad: 'var(--bad)' };
-
-function initFeedback() {
-  const sel = document.getElementById('fb-site');
-  sel.append(el('option', { value: '', text: 'Choose a site' }), ...CONFIG.sites.map(s => el('option', { value: s.id, text: s.name })));
-  document.getElementById('feedback').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const status = document.getElementById('fb-status');
-    const siteId = sel.value;
-    const outcome = document.querySelector('input[name=outcome]:checked')?.value;
-    if (!siteId || !outcome) { status.textContent = 'Pick a site and how the water was.'; return; }
-    const site = CONFIG.sites.find(s => s.id === siteId);
-    const now = state.sites[siteId]?.now;
-    const entry = {
-      name: document.getElementById('fb-name').value.trim().slice(0, 60),
-      siteId, siteName: site.name, outcome,
-      notes: document.getElementById('fb-notes').value.trim().slice(0, 1000),
-      // What the dashboard predicted at submit time, for tuning CONFIG.score later.
-      predicted: now?.score || 'unknown',
-      conditions: now ? {
-        wind: now.wind, gust: now.gust, windDir: now.windDir,
-        waveLocal: now.wave, waveOffshore: now.waveOffshore, waveDir: now.waveDir, period: now.period,
-        swell: now.swell, swellDir: now.swellDir, windWave: now.windWave, windWaveDir: now.windWaveDir,
-        sst: now.sst, hour: now.time, clarity: state.sites[siteId]?.clarity?.level ?? null,
-        site: { facing: site.facing, openSector: site.openSector, shelter: site.shelter },
-      } : null,
-      createdAt: new Date().toISOString(),
-    };
-    const btn = document.getElementById('fb-submit');
-    btn.disabled = true; status.textContent = 'Sending…';
-    try {
-      await FeedbackStore.submit(entry);
-      e.target.reset();
-      status.textContent = 'Thanks, report saved.';
-      renderRecent();
-    } catch (err) {
-      status.textContent = `Could not save your report (${err.message}). Try again.`;
-    } finally { btn.disabled = false; }
-  });
-}
-
-async function renderRecent() {
-  const ul = document.getElementById('recent');
-  try {
-    const items = await FeedbackStore.recent(CONFIG.recentFeedbackCount);
-    if (!items.length) { ul.replaceChildren(el('li', { class: 'empty', text: 'No reports yet. Be the first after your next dive.' })); return; }
-    ul.replaceChildren(...items.map(f => {
-      const when = new Intl.DateTimeFormat('en-GB', { timeZone: CONFIG.tz, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(f.createdAt));
-      return el('li', { style: `--oc:${OUTCOME_COLOR[f.outcome] || 'var(--line)'}` },
-        el('div', { class: 'meta' }, el('b', { text: f.outcome }), ` · ${f.siteName} · ${f.name || 'Anonymous'} · ${when}`,
-          f.predicted && f.predicted !== 'unknown' ? ` · forecast said ${LEVELS[f.predicted]?.label.toLowerCase()}` : ''),
-        f.notes ? el('div', { class: 'note', text: f.notes }) : null);
-    }));
-  } catch {
-    ul.replaceChildren(el('li', { class: 'error', text: 'Could not load recent reports.' }));
-  }
-}
-
-/* ==========================================================================
    Boot
    ========================================================================== */
 initMap();
 renderRules();
-initFeedback();
 render();
-renderRecent();
 refreshAll();
 document.getElementById('refresh').addEventListener('click', refreshAll);
 // Refresh every refreshMinutes, or every notifyCheckMinutes while a site is being watched.
